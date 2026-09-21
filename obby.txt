@@ -1,0 +1,1093 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+local GhostHub = {}
+GhostHub.__index = GhostHub
+
+local THEME = {
+	bgDark = Color3.fromRGB(8, 8, 8),
+	bgMid = Color3.fromRGB(14, 14, 14),
+	bgLight = Color3.fromRGB(11, 11, 11),
+	textPrimary = Color3.fromRGB(255, 255, 255),
+	textSecondary = Color3.fromRGB(255, 255, 255),
+	accentRed = Color3.fromRGB(180, 40, 40),
+	accentGreen = Color3.fromRGB(60, 180, 90),
+	sidebarWidth = 140,
+	frameWidth = 560,
+	frameHeight = 380,
+}
+
+local function createSnowLayer(parent, count, zIndex)
+	local layer = Instance.new("Frame")
+	layer.Name = "SnowLayer"
+	layer.Size = UDim2.new(1, 0, 1, 0)
+	layer.BackgroundTransparency = 1
+	layer.ZIndex = zIndex or 11
+	layer.Parent = parent
+
+	for i = 1, count do
+		local flake = Instance.new("Frame")
+		local size = math.random(1, 3)
+		flake.Size = UDim2.new(0, size, 0, size)
+		flake.Position = UDim2.new(math.random(), 0, -0.03, 0)
+		flake.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		flake.BackgroundTransparency = math.random(55, 80) / 100
+		flake.BorderSizePixel = 0
+		flake.ZIndex = zIndex or 11
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = flake
+		flake.Parent = layer
+
+		local speed = math.random(18, 40) / 10
+		local drift = math.random(-25, 25) / 10
+
+		task.spawn(function()
+			while flake and flake.Parent do
+				local startX = flake.Position.X.Scale
+				local tween = TweenService:Create(flake, TweenInfo.new(speed, Enum.EasingStyle.Linear), {
+					Position = UDim2.new(startX + (drift / 100), 0, 1.03, 0)
+				})
+				tween:Play()
+				tween.Completed:Wait()
+				if flake and flake.Parent then
+					flake.Position = UDim2.new(math.random(), 0, -0.03, 0)
+				end
+			end
+		end)
+	end
+	return layer
+end
+
+local function createGlowRing(parent)
+	local ring = Instance.new("Frame")
+	ring.Name = "GlowRing"
+	ring.Size = UDim2.new(1, 6, 1, 6)
+	ring.Position = UDim2.new(0, -3, 0, -3)
+	ring.BackgroundTransparency = 1
+	ring.ZIndex = 9
+	ring.Parent = parent
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 22)
+	corner.Parent = ring
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.95
+	stroke.Parent = ring
+
+	TweenService:Create(stroke, TweenInfo.new(3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Transparency = 0.88
+	}):Play()
+
+	return ring
+end
+
+local function createScanlines(parent)
+	local scan = Instance.new("Frame")
+	scan.Name = "Scanlines"
+	scan.Size = UDim2.new(1, 0, 1, 0)
+	scan.BackgroundTransparency = 1
+	scan.ZIndex = 100
+	scan.Parent = parent
+
+	local pattern = Instance.new("UIGradient")
+	pattern.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 0, 0)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+	})
+	pattern.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.993),
+		NumberSequenceKeypoint.new(1, 0.993)
+	})
+	pattern.Offset = Vector2.new(0, 0)
+	pattern.Rotation = 0
+	pattern.Parent = scan
+
+	task.spawn(function()
+		while scan and scan.Parent do
+			pattern.Offset = Vector2.new(0, (tick() * 0.4) % 1)
+			task.wait(0.04)
+		end
+	end)
+
+	return scan
+end
+
+local function createCorner(parent, name, position)
+	local corner = Instance.new("Frame")
+	corner.Name = name
+	corner.Size = UDim2.new(0, 18, 0, 18)
+	corner.Position = position
+	corner.BackgroundTransparency = 1
+	corner.BorderSizePixel = 0
+	corner.ZIndex = 15
+	corner.Parent = parent
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.94
+	stroke.Parent = corner
+
+	return corner
+end
+
+local function playIntro(title, onComplete)
+	local introGui = Instance.new("ScreenGui")
+	introGui.Name = "GhostHubIntro"
+	introGui.ResetOnSpawn = false
+	introGui.DisplayOrder = 999
+	introGui.Parent = game.CoreGui
+
+	local bg = Instance.new("Frame")
+	bg.Name = "IntroBg"
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.new(0, 0, 0)
+	bg.BorderSizePixel = 0
+	bg.ZIndex = 1000
+	bg.Parent = introGui
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Size = UDim2.new(0, 400, 0, 60)
+	titleLabel.Position = UDim2.new(0.5, -200, 0.5, -30)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = title or "GHOSTHUB"
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextTransparency = 1
+	titleLabel.TextStrokeTransparency = 1
+	titleLabel.TextStrokeColor3 = Color3.fromRGB(200, 200, 200)
+	titleLabel.Font = Enum.Font.GothamBlack
+	titleLabel.TextSize = 48
+	titleLabel.ZIndex = 1001
+	titleLabel.Parent = bg
+
+	local subLabel = Instance.new("TextLabel")
+	subLabel.Size = UDim2.new(0, 400, 0, 20)
+	subLabel.Position = UDim2.new(0.5, -200, 0.5, 28)
+	subLabel.BackgroundTransparency = 1
+	subLabel.Text = "INITIALIZING..."
+	subLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+	subLabel.TextTransparency = 1
+	subLabel.Font = Enum.Font.GothamSemibold
+	subLabel.TextSize = 12
+	subLabel.ZIndex = 1001
+	subLabel.Parent = bg
+
+	local line = Instance.new("Frame")
+	line.Size = UDim2.new(0, 0, 0, 2)
+	line.Position = UDim2.new(0.5, 0, 0.5, 55)
+	line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	line.BackgroundTransparency = 0.5
+	line.BorderSizePixel = 0
+	line.ZIndex = 1001
+	line.Parent = bg
+
+	TweenService:Create(titleLabel, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+		TextTransparency = 0,
+		TextStrokeTransparency = 0.9
+	}):Play()
+	TweenService:Create(subLabel, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, false, 0.3), {
+		TextTransparency = 0.3
+	}):Play()
+	TweenService:Create(line, TweenInfo.new(1.0, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.5), {
+		Size = UDim2.new(0, 180, 0, 2),
+		Position = UDim2.new(0.5, -90, 0.5, 55)
+	}):Play()
+
+	task.delay(2.2, function()
+		TweenService:Create(titleLabel, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+			TextTransparency = 1,
+			TextStrokeTransparency = 1
+		}):Play()
+		TweenService:Create(subLabel, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+			TextTransparency = 1
+		}):Play()
+		TweenService:Create(line, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1
+		}):Play()
+
+		task.delay(0.9, function()
+			introGui:Destroy()
+			if onComplete then onComplete() end
+		end)
+	end)
+end
+
+function GhostHub.new(title, subtitleText)
+	local self = setmetatable({}, GhostHub)
+
+	self.pages = {}
+	self.allElements = {}
+	self.activePage = nil
+
+	self.gui = Instance.new("ScreenGui")
+	self.gui.Name = "GhostHub_" .. (title or "Main")
+	self.gui.ResetOnSpawn = false
+	self.gui.Enabled = false
+	self.gui.Parent = game.CoreGui
+
+	self.mainFrame = Instance.new("Frame")
+	self.mainFrame.Name = "MainFrame"
+	self.mainFrame.Size = UDim2.new(0, THEME.frameWidth, 0, 0)
+	self.mainFrame.Position = UDim2.new(0.5, -THEME.frameWidth / 2, 0.5, 0)
+	self.mainFrame.BackgroundColor3 = THEME.bgDark
+	self.mainFrame.BorderSizePixel = 0
+	self.mainFrame.ZIndex = 10
+	self.mainFrame.ClipsDescendants = true
+	self.mainFrame.Parent = self.gui
+
+	local bgGradient = Instance.new("UIGradient")
+	bgGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 10, 10)),
+		ColorSequenceKeypoint.new(0.3, Color3.fromRGB(14, 14, 14)),
+		ColorSequenceKeypoint.new(0.7, Color3.fromRGB(11, 11, 11)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(7, 7, 7))
+	})
+	bgGradient.Rotation = 90
+	bgGradient.Parent = self.mainFrame
+
+	local mainCorner = Instance.new("UICorner")
+	mainCorner.CornerRadius = UDim.new(0, 20)
+	mainCorner.Parent = self.mainFrame
+
+	self.snowLayer = createSnowLayer(self.mainFrame, 50, 11)
+	createGlowRing(self.mainFrame)
+	createScanlines(self.mainFrame)
+
+	createCorner(self.mainFrame, "CornerTL", UDim2.new(0, 14, 0, 14))
+	createCorner(self.mainFrame, "CornerTR", UDim2.new(1, -32, 0, 14))
+	createCorner(self.mainFrame, "CornerBL", UDim2.new(0, 14, 1, -32))
+	createCorner(self.mainFrame, "CornerBR", UDim2.new(1, -32, 1, -32))
+
+	self.titleBar = Instance.new("Frame")
+	self.titleBar.Name = "TitleBar"
+	self.titleBar.Size = UDim2.new(1, 0, 0, 58)
+	self.titleBar.BackgroundTransparency = 1
+	self.titleBar.ZIndex = 20
+	self.titleBar.Parent = self.mainFrame
+
+	local brandName = Instance.new("TextLabel")
+	brandName.Size = UDim2.new(0, 300, 0, 28)
+	brandName.Position = UDim2.new(0, 26, 0, 12)
+	brandName.BackgroundTransparency = 1
+	brandName.Text = title or "GHOSTHUB"
+	brandName.TextColor3 = THEME.textPrimary
+	brandName.Font = Enum.Font.GothamBlack
+	brandName.TextSize = 22
+	brandName.TextXAlignment = Enum.TextXAlignment.Left
+	brandName.ZIndex = 21
+	brandName.Parent = self.titleBar
+
+	local brandGlow = Instance.new("TextLabel")
+	brandGlow.Size = UDim2.new(0, 300, 0, 28)
+	brandGlow.Position = UDim2.new(0, 26, 0, 13)
+	brandGlow.BackgroundTransparency = 1
+	brandGlow.Text = title or "GHOSTHUB"
+	brandGlow.TextColor3 = THEME.textPrimary
+	brandGlow.TextTransparency = 0.93
+	brandGlow.Font = Enum.Font.GothamBlack
+	brandGlow.TextSize = 22
+	brandGlow.TextXAlignment = Enum.TextXAlignment.Left
+	brandGlow.ZIndex = 20
+	brandGlow.Parent = self.titleBar
+
+	TweenService:Create(brandGlow, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		TextTransparency = 0.78
+	}):Play()
+
+	local sub = Instance.new("TextLabel")
+	sub.Size = UDim2.new(0, 300, 0, 14)
+	sub.Position = UDim2.new(0, 26, 0, 40)
+	sub.BackgroundTransparency = 1
+	sub.Text = subtitleText or "SCRIPT HUB"
+	sub.TextColor3 = THEME.textSecondary
+	sub.TextTransparency = 0.78
+	sub.Font = Enum.Font.GothamSemibold
+	sub.TextSize = 10
+	sub.TextXAlignment = Enum.TextXAlignment.Left
+	sub.ZIndex = 21
+	sub.Parent = self.titleBar
+
+	local brandLine = Instance.new("Frame")
+	brandLine.Size = UDim2.new(0, 0, 0, 1)
+	brandLine.Position = UDim2.new(0, 26, 0, 56)
+	brandLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	brandLine.BackgroundTransparency = 0.65
+	brandLine.BorderSizePixel = 0
+	brandLine.ZIndex = 21
+	brandLine.Parent = self.titleBar
+
+	TweenService:Create(brandLine, TweenInfo.new(1.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.4), {
+		Size = UDim2.new(0, 170, 0, 1)
+	}):Play()
+
+	self.closeBtn = Instance.new("TextButton")
+	self.closeBtn.Name = "CloseBtn"
+	self.closeBtn.Size = UDim2.new(0, 30, 0, 30)
+	self.closeBtn.Position = UDim2.new(1, -46, 0, 14)
+	self.closeBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	self.closeBtn.BackgroundTransparency = 0.97
+	self.closeBtn.Text = "×"
+	self.closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	self.closeBtn.TextTransparency = 0.55
+	self.closeBtn.Font = Enum.Font.GothamBold
+	self.closeBtn.TextSize = 18
+	self.closeBtn.ZIndex = 21
+	self.closeBtn.Parent = self.titleBar
+
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 10)
+	closeCorner.Parent = self.closeBtn
+
+	local closeStroke = Instance.new("UIStroke")
+	closeStroke.Color = Color3.fromRGB(255, 255, 255)
+	closeStroke.Thickness = 1
+	closeStroke.Transparency = 0.94
+	closeStroke.Parent = self.closeBtn
+
+	self.closeBtn.MouseEnter:Connect(function()
+		TweenService:Create(self.closeBtn, TweenInfo.new(0.25), {
+			BackgroundColor3 = THEME.accentRed,
+			BackgroundTransparency = 0.82,
+			TextColor3 = Color3.fromRGB(255, 90, 90),
+			TextTransparency = 0.15
+		}):Play()
+		TweenService:Create(closeStroke, TweenInfo.new(0.25), {
+			Color = THEME.accentRed,
+			Transparency = 0.65
+		}):Play()
+		TweenService:Create(self.closeBtn, TweenInfo.new(0.3), {Rotation = 90}):Play()
+	end)
+
+	self.closeBtn.MouseLeave:Connect(function()
+		TweenService:Create(self.closeBtn, TweenInfo.new(0.25), {
+			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+			BackgroundTransparency = 0.97,
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextTransparency = 0.55
+		}):Play()
+		TweenService:Create(closeStroke, TweenInfo.new(0.25), {
+			Color = Color3.fromRGB(255, 255, 255),
+			Transparency = 0.94
+		}):Play()
+		TweenService:Create(self.closeBtn, TweenInfo.new(0.3), {Rotation = 0}):Play()
+	end)
+
+	local separator = Instance.new("Frame")
+	separator.Size = UDim2.new(1, -52, 0, 1)
+	separator.Position = UDim2.new(0, 26, 0, 70)
+	separator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	separator.BackgroundTransparency = 0.94
+	separator.BorderSizePixel = 0
+	separator.ZIndex = 20
+	separator.Parent = self.mainFrame
+
+	local sepDot = Instance.new("Frame")
+	sepDot.Size = UDim2.new(0, 4, 0, 4)
+	sepDot.Position = UDim2.new(0.5, -2, 0, -1)
+	sepDot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	sepDot.BackgroundTransparency = 0.88
+	sepDot.BorderSizePixel = 0
+	sepDot.ZIndex = 21
+	sepDot.Parent = separator
+
+	local sepDotCorner = Instance.new("UICorner")
+	sepDotCorner.CornerRadius = UDim.new(1, 0)
+	sepDotCorner.Parent = sepDot
+
+	self.sidebar = Instance.new("Frame")
+	self.sidebar.Name = "Sidebar"
+	self.sidebar.Size = UDim2.new(0, THEME.sidebarWidth, 1, -80)
+	self.sidebar.Position = UDim2.new(0, 0, 0, 80)
+	self.sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	self.sidebar.BackgroundTransparency = 0.985
+	self.sidebar.BorderSizePixel = 0
+	self.sidebar.ZIndex = 20
+	self.sidebar.Parent = self.mainFrame
+
+	local sidebarStroke = Instance.new("UIStroke")
+	sidebarStroke.Color = Color3.fromRGB(255, 255, 255)
+	sidebarStroke.Thickness = 1
+	sidebarStroke.Transparency = 0.97
+	sidebarStroke.Parent = self.sidebar
+
+	local sidebarCorner = Instance.new("UICorner")
+	sidebarCorner.CornerRadius = UDim.new(0, 16)
+	sidebarCorner.Parent = self.sidebar
+
+	local sidebarPad = Instance.new("UIPadding")
+	sidebarPad.PaddingTop = UDim.new(0, 12)
+	sidebarPad.PaddingBottom = UDim.new(0, 12)
+	sidebarPad.PaddingLeft = UDim.new(0, 10)
+	sidebarPad.PaddingRight = UDim.new(0, 10)
+	sidebarPad.Parent = self.sidebar
+
+	self.sidebarList = Instance.new("UIListLayout")
+	self.sidebarList.SortOrder = Enum.SortOrder.LayoutOrder
+	self.sidebarList.Padding = UDim.new(0, 8)
+	self.sidebarList.Parent = self.sidebar
+
+	self.contentArea = Instance.new("Frame")
+	self.contentArea.Name = "ContentArea"
+	self.contentArea.Size = UDim2.new(1, -THEME.sidebarWidth - 26, 1, -80)
+	self.contentArea.Position = UDim2.new(0, THEME.sidebarWidth + 13, 0, 80)
+	self.contentArea.BackgroundTransparency = 1
+	self.contentArea.ZIndex = 20
+	self.contentArea.Parent = self.mainFrame
+
+	self.searchBox = Instance.new("TextBox")
+	self.searchBox.Name = "SearchBox"
+	self.searchBox.Size = UDim2.new(1, 0, 0, 34)
+	self.searchBox.Position = UDim2.new(0, 0, 0, 0)
+	self.searchBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	self.searchBox.BackgroundTransparency = 0.96
+	self.searchBox.Text = ""
+	self.searchBox.PlaceholderText = "Search features..."
+	self.searchBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 120)
+	self.searchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+	self.searchBox.Font = Enum.Font.GothamBold
+	self.searchBox.TextSize = 12
+	self.searchBox.TextXAlignment = Enum.TextXAlignment.Left
+	self.searchBox.ClearTextOnFocus = false
+	self.searchBox.ZIndex = 21
+	self.searchBox.Parent = self.contentArea
+
+	local searchCorner = Instance.new("UICorner")
+	searchCorner.CornerRadius = UDim.new(0, 12)
+	searchCorner.Parent = self.searchBox
+
+	local searchStroke = Instance.new("UIStroke")
+	searchStroke.Color = Color3.fromRGB(255, 255, 255)
+	searchStroke.Thickness = 1
+	searchStroke.Transparency = 0.95
+	searchStroke.Parent = self.searchBox
+
+	local searchPad = Instance.new("UIPadding")
+	searchPad.PaddingLeft = UDim.new(0, 12)
+	searchPad.PaddingRight = UDim.new(0, 12)
+	searchPad.Parent = self.searchBox
+
+	local searchIcon = Instance.new("TextLabel")
+	searchIcon.Size = UDim2.new(0, 20, 0, 20)
+	searchIcon.Position = UDim2.new(1, -28, 0.5, -10)
+	searchIcon.BackgroundTransparency = 1
+	searchIcon.Text = "🔍"
+	searchIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
+	searchIcon.TextTransparency = 0.6
+	searchIcon.Font = Enum.Font.GothamBold
+	searchIcon.TextSize = 12
+	searchIcon.ZIndex = 22
+	searchIcon.Parent = self.searchBox
+
+	self.searchFrame = Instance.new("ScrollingFrame")
+	self.searchFrame.Name = "SearchResults"
+	self.searchFrame.Size = UDim2.new(1, 0, 1, -44)
+	self.searchFrame.Position = UDim2.new(0, 0, 0, 44)
+	self.searchFrame.BackgroundTransparency = 1
+	self.searchFrame.BorderSizePixel = 0
+	self.searchFrame.ScrollBarThickness = 2
+	self.searchFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+	self.searchFrame.ScrollBarImageTransparency = 0.85
+	self.searchFrame.ZIndex = 20
+	self.searchFrame.Visible = false
+	self.searchFrame.Parent = self.contentArea
+
+	local searchList = Instance.new("UIListLayout")
+	searchList.SortOrder = Enum.SortOrder.LayoutOrder
+	searchList.Padding = UDim.new(0, 8)
+	searchList.Parent = self.searchFrame
+
+	local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+
+	self.titleBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = self.mainFrame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+
+	self.titleBar.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			self.mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+
+	self.closeBtn.MouseButton1Click:Connect(function()
+		self:Destroy()
+	end)
+
+	self.searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		self:UpdateSearch(self.searchBox.Text)
+	end)
+
+	self.searchBox.Focused:Connect(function()
+		TweenService:Create(searchStroke, TweenInfo.new(0.2), {Transparency = 0.85}):Play()
+	end)
+
+	self.searchBox.FocusLost:Connect(function()
+		TweenService:Create(searchStroke, TweenInfo.new(0.2), {Transparency = 0.95}):Play()
+	end)
+
+	playIntro(title or "GHOSTHUB", function()
+		self.gui.Enabled = true
+		TweenService:Create(self.mainFrame, TweenInfo.new(0.7, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, THEME.frameWidth, 0, THEME.frameHeight),
+			Position = UDim2.new(0.5, -THEME.frameWidth / 2, 0.5, -THEME.frameHeight / 2)
+		}):Play()
+	end)
+
+	return self
+end
+
+function GhostHub:AddPage(name)
+	if self.pages[name] then return self.pages[name] end
+
+	local tabBtn = Instance.new("TextButton")
+	tabBtn.Name = name .. "_Tab"
+	tabBtn.Size = UDim2.new(1, 0, 0, 36)
+	tabBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	tabBtn.BackgroundTransparency = 0.97
+	tabBtn.Text = name
+	tabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	tabBtn.TextTransparency = 0.55
+	tabBtn.Font = Enum.Font.GothamBold
+	tabBtn.TextSize = 11
+	tabBtn.ZIndex = 21
+	tabBtn.Parent = self.sidebar
+
+	local tabCorner = Instance.new("UICorner")
+	tabCorner.CornerRadius = UDim.new(0, 10)
+	tabCorner.Parent = tabBtn
+
+	local tabStroke = Instance.new("UIStroke")
+	tabStroke.Color = Color3.fromRGB(255, 255, 255)
+	tabStroke.Thickness = 1
+	tabStroke.Transparency = 0.97
+	tabStroke.Parent = tabBtn
+
+	local accentLine = Instance.new("Frame")
+	accentLine.Name = "Accent"
+	accentLine.Size = UDim2.new(0, 3, 0, 0)
+	accentLine.Position = UDim2.new(0, 0, 0.5, 0)
+	accentLine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	accentLine.BackgroundTransparency = 0.5
+	accentLine.BorderSizePixel = 0
+	accentLine.ZIndex = 22
+	accentLine.Parent = tabBtn
+
+	local accentCorner = Instance.new("UICorner")
+	accentCorner.CornerRadius = UDim.new(0, 2)
+	accentCorner.Parent = accentLine
+
+	local content = Instance.new("ScrollingFrame")
+	content.Name = name .. "_Content"
+	content.Size = UDim2.new(1, 0, 1, -44)
+	content.Position = UDim2.new(0, 0, 0, 44)
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.ScrollBarThickness = 2
+	content.ScrollBarImageColor3 = Color3.fromRGB(255, 255, 255)
+	content.ScrollBarImageTransparency = 0.85
+	content.ZIndex = 20
+	content.Visible = false
+	content.Parent = self.contentArea
+
+	local contentList = Instance.new("UIListLayout")
+	contentList.SortOrder = Enum.SortOrder.LayoutOrder
+	contentList.Padding = UDim.new(0, 8)
+	contentList.Parent = content
+
+	local contentPad = Instance.new("UIPadding")
+	contentPad.PaddingTop = UDim.new(0, 4)
+	contentPad.PaddingBottom = UDim.new(0, 10)
+	contentPad.Parent = content
+
+	self.pages[name] = {
+		button = tabBtn,
+		content = content,
+		elements = {},
+		accent = accentLine,
+		stroke = tabStroke
+	}
+
+	tabBtn.MouseButton1Click:Connect(function()
+		self:SwitchPage(name)
+	end)
+
+	tabBtn.MouseEnter:Connect(function()
+		if self.activePage ~= name then
+			TweenService:Create(tabBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.94}):Play()
+			TweenService:Create(tabStroke, TweenInfo.new(0.2), {Transparency = 0.92}):Play()
+		end
+	end)
+
+	tabBtn.MouseLeave:Connect(function()
+		if self.activePage ~= name then
+			TweenService:Create(tabBtn, TweenInfo.new(0.2), {BackgroundTransparency = 0.97}):Play()
+			TweenService:Create(tabStroke, TweenInfo.new(0.2), {Transparency = 0.97}):Play()
+		end
+	end)
+
+	if not self.activePage then
+		self:SwitchPage(name)
+	end
+
+	return self.pages[name]
+end
+
+function GhostHub:SwitchPage(name)
+	local page = self.pages[name]
+	if not page then return end
+
+	if self.searchBox.Text ~= "" then
+		self.searchBox.Text = ""
+		self:UpdateSearch("")
+	end
+
+	if self.activePage and self.pages[self.activePage] then
+		local cur = self.pages[self.activePage]
+		cur.content.Visible = false
+		TweenService:Create(cur.button, TweenInfo.new(0.2), {
+			BackgroundTransparency = 0.97,
+			TextTransparency = 0.55
+		}):Play()
+		TweenService:Create(cur.stroke, TweenInfo.new(0.2), {Transparency = 0.97}):Play()
+		TweenService:Create(cur.accent, TweenInfo.new(0.2), {Size = UDim2.new(0, 3, 0, 0)}):Play()
+	end
+
+	self.activePage = name
+	page.content.Visible = true
+	TweenService:Create(page.button, TweenInfo.new(0.2), {
+		BackgroundTransparency = 0.92,
+		TextTransparency = 0.15
+	}):Play()
+	TweenService:Create(page.stroke, TweenInfo.new(0.2), {Transparency = 0.88}):Play()
+	TweenService:Create(page.accent, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+		Size = UDim2.new(0, 3, 0, 18)
+	}):Play()
+end
+
+function GhostHub:LayoutPage(name)
+	local page = self.pages[name]
+	if not page then return end
+	local yPos = 0
+	for _, info in ipairs(page.elements) do
+		if info.element and info.element.Parent == page.content then
+			info.element.Position = UDim2.new(0, 0, 0, yPos)
+			yPos = yPos + info.height
+		end
+	end
+	page.content.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+end
+
+function GhostHub:UpdateSearch(query)
+	query = query:lower():gsub("^%s*(.-)%s*$", "%1")
+	if query == "" then
+		self.searchFrame.Visible = false
+		if self.activePage then
+			self.pages[self.activePage].content.Visible = true
+		end
+		for _, info in ipairs(self.allElements) do
+			if info.element and info.originalParent then
+				info.element.Parent = info.originalParent
+			end
+		end
+		for name, _ in pairs(self.pages) do
+			self:LayoutPage(name)
+		end
+		return
+	end
+
+	for _, p in pairs(self.pages) do
+		p.content.Visible = false
+	end
+	self.searchFrame.Visible = true
+
+	for _, child in pairs(self.searchFrame:GetChildren()) do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+
+	local yPos = 0
+	for _, info in ipairs(self.allElements) do
+		if info.name:lower():find(query, 1, true) then
+			info.element.Parent = self.searchFrame
+			info.element.Position = UDim2.new(0, 0, 0, yPos)
+			yPos = yPos + info.height
+		end
+	end
+
+	self.searchFrame.CanvasSize = UDim2.new(0, 0, 0, yPos + 20)
+end
+
+function GhostHub:_ensurePage(pageName)
+	if not self.pages[pageName] then
+		self:AddPage(pageName)
+	end
+	return self.pages[pageName]
+end
+
+function GhostHub:AddButton(pageName, text, callback)
+	local page = self:_ensurePage(pageName)
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, 0, 0, 52)
+	btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	btn.BackgroundTransparency = 0.94
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Font = Enum.Font.GothamBlack
+	btn.TextSize = 12
+	btn.ZIndex = 21
+	btn.Parent = page.content
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = btn
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.94
+	stroke.Parent = btn
+
+	local shine = Instance.new("Frame")
+	shine.Size = UDim2.new(0.25, 0, 1, 0)
+	shine.Position = UDim2.new(-0.25, 0, 0, 0)
+	shine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	shine.BackgroundTransparency = 0.93
+	shine.BorderSizePixel = 0
+	shine.ZIndex = 22
+	shine.Parent = btn
+
+	local shineCorner = Instance.new("UICorner")
+	shineCorner.CornerRadius = UDim.new(0, 14)
+	shineCorner.Parent = shine
+
+	task.spawn(function()
+		while shine and shine.Parent do
+			shine.Position = UDim2.new(-0.25, 0, 0, 0)
+			local tween = TweenService:Create(shine, TweenInfo.new(2, Enum.EasingStyle.Quad), {
+				Position = UDim2.new(1.25, 0, 0, 0)
+			})
+			tween:Play()
+			tween.Completed:Wait()
+			task.wait(3)
+		end
+	end)
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.9}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.2), {Transparency = 0.88}):Play()
+	end)
+
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.94}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.2), {Transparency = 0.94}):Play()
+	end)
+
+	btn.MouseButton1Click:Connect(function()
+		if callback then callback() end
+	end)
+
+	local info = {
+		name = text,
+		element = btn,
+		page = pageName,
+		type = "button",
+		height = 58,
+		originalParent = page.content
+	}
+	table.insert(self.allElements, info)
+	table.insert(page.elements, info)
+
+	self:LayoutPage(pageName)
+	return btn
+end
+
+function GhostHub:AddToggle(pageName, text, defaultState, callback)
+	local page = self:_ensurePage(pageName)
+
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(1, 0, 0, 44)
+	container.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	container.BackgroundTransparency = 0.985
+	container.BorderSizePixel = 0
+	container.ZIndex = 21
+	container.Parent = page.content
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = container
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.97
+	stroke.Parent = container
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -70, 1, 0)
+	label.Position = UDim2.new(0, 14, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextTransparency = 0.2
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.ZIndex = 22
+	label.Parent = container
+
+	local toggleBg = Instance.new("Frame")
+	toggleBg.Size = UDim2.new(0, 44, 0, 24)
+	toggleBg.Position = UDim2.new(1, -54, 0.5, -12)
+	toggleBg.BackgroundColor3 = defaultState and Color3.fromRGB(60, 180, 90) or Color3.fromRGB(60, 60, 60)
+	toggleBg.BackgroundTransparency = 0.3
+	toggleBg.BorderSizePixel = 0
+	toggleBg.ZIndex = 22
+	toggleBg.Parent = container
+
+	local toggleCorner = Instance.new("UICorner")
+	toggleCorner.CornerRadius = UDim.new(1, 0)
+	toggleCorner.Parent = toggleBg
+
+	local toggleKnob = Instance.new("Frame")
+	toggleKnob.Size = UDim2.new(0, 18, 0, 18)
+	toggleKnob.Position = defaultState and UDim2.new(1, -22, 0.5, -9) or UDim2.new(0, 4, 0.5, -9)
+	toggleKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	toggleKnob.BackgroundTransparency = 0.1
+	toggleKnob.BorderSizePixel = 0
+	toggleKnob.ZIndex = 23
+	toggleKnob.Parent = toggleBg
+
+	local knobCorner = Instance.new("UICorner")
+	knobCorner.CornerRadius = UDim.new(1, 0)
+	knobCorner.Parent = toggleKnob
+
+	local state = defaultState
+
+	container.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			state = not state
+
+			TweenService:Create(toggleBg, TweenInfo.new(0.25), {
+				BackgroundColor3 = state and Color3.fromRGB(60, 180, 90) or Color3.fromRGB(60, 60, 60)
+			}):Play()
+
+			TweenService:Create(toggleKnob, TweenInfo.new(0.25, Enum.EasingStyle.Back), {
+				Position = state and UDim2.new(1, -22, 0.5, -9) or UDim2.new(0, 4, 0.5, -9)
+			}):Play()
+
+			if callback then callback(state) end
+		end
+	end)
+
+	local info = {
+		name = text,
+		element = container,
+		page = pageName,
+		type = "toggle",
+		height = 50,
+		originalParent = page.content
+	}
+	table.insert(self.allElements, info)
+	table.insert(page.elements, info)
+
+	self:LayoutPage(pageName)
+	return container
+end
+
+function GhostHub:AddLabel(pageName, text)
+	local page = self:_ensurePage(pageName)
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 0, 20)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = text
+	lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+	lbl.TextTransparency = 0.6
+	lbl.Font = Enum.Font.GothamMedium
+	lbl.TextSize = 11
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.ZIndex = 21
+	lbl.Parent = page.content
+
+	local info = {
+		name = text,
+		element = lbl,
+		page = pageName,
+		type = "label",
+		height = 24,
+		originalParent = page.content
+	}
+	table.insert(self.allElements, info)
+	table.insert(page.elements, info)
+
+	self:LayoutPage(pageName)
+	return lbl
+end
+
+-- EKSTRA BİLEŞEN: AddTextBox (CP Arama İçin)
+
+function GhostHub:AddTextBox(pageName, placeholder, callback)
+	local page = self:_ensurePage(pageName)
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, 0, 0, 44)
+	box.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	box.BackgroundTransparency = 0.985
+	box.Text = ""
+	box.PlaceholderText = placeholder or "Yazın..."
+	box.PlaceholderColor3 = Color3.fromRGB(130, 130, 130)
+	box.TextColor3 = Color3.fromRGB(255, 255, 255)
+	box.Font = Enum.Font.GothamBold
+	box.TextSize = 12
+	box.ClearTextOnFocus = false
+	box.ZIndex = 21
+	box.Parent = page.content
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = box
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.97
+	stroke.Parent = box
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 14)
+	pad.PaddingRight = UDim.new(0, 14)
+	pad.Parent = box
+
+	box.FocusLost:Connect(function(enterPressed)
+		if callback then callback(box.Text, enterPressed) end
+	end)
+
+	local info = {
+		name = placeholder,
+		element = box,
+		page = pageName,
+		type = "textbox",
+		height = 50,
+		originalParent = page.content
+	}
+	table.insert(self.allElements, info)
+	table.insert(page.elements, info)
+
+	self:LayoutPage(pageName)
+	return box
+end
+
+function GhostHub:Destroy()
+	TweenService:Create(self.mainFrame, TweenInfo.new(0.4, Enum.EasingStyle.Cubic, Enum.EasingDirection.In), {
+		Size = UDim2.new(0, THEME.frameWidth, 0, 0),
+		Position = UDim2.new(0.5, -THEME.frameWidth / 2, 0.5, 0)
+	}):Play()
+	task.wait(0.4)
+	self.gui:Destroy()
+end
+
+-- CHECKPOINT SİSTEMİ MANTIĞI VE HUB ENTEGRASYONU
+
+local checkpointsFolder = workspace:WaitForChild("Checkpoints")
+local TP_DELAY = 0.5
+local isTeleporting = false
+local currentCPIndex = 1
+
+local function teleportToPart(part)
+	local character = player.Character or player.CharacterAdded:Wait()
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if hrp and part then
+		if part:IsA("BasePart") then
+			hrp.CFrame = part.CFrame + Vector3.new(0, 3, 0)
+		elseif part:IsA("Model") then
+			hrp.CFrame = part:GetPivot() + Vector3.new(0, 3, 0)
+		end
+	end
+end
+
+local function getSortedCheckpoints()
+	local cpList = {}
+	for _, child in ipairs(checkpointsFolder:GetChildren()) do
+		local numberName = tonumber(child.Name)
+		if numberName then
+			table.insert(cpList, {part = child, num = numberName})
+		end
+	end
+	table.sort(cpList, function(a, b) return a.num < b.num end)
+	return cpList
+end
+
+local function startTeleportingLoop()
+	local sortedCPs = getSortedCheckpoints()
+	
+	for i = currentCPIndex, #sortedCPs do
+		if not isTeleporting then break end
+		currentCPIndex = i
+		teleportToPart(sortedCPs[i].part)
+		task.wait(TP_DELAY)
+	end
+	
+	if currentCPIndex >= #sortedCPs then
+		currentCPIndex = 1
+	end
+end
+
+-- GhostHub Arayüzünü Başlatma
+local hub = GhostHub.new("GHOSTHUB", "CHECKPOINT TELEPORTER")
+
+hub:AddLabel("Main", "Işınlanma Ayarları")
+
+-- 1. Checkpoint Git/Arama Kutusu
+hub:AddTextBox("Main", "CP No Yaz ve Enter'a Bas (Örn: 15)...", function(text, enterPressed)
+	if enterPressed and text ~= "" then
+		local targetNum = tonumber(text)
+		if targetNum then
+			local sortedCPs = getSortedCheckpoints()
+			local foundIndex = nil
+			
+			for index, item in ipairs(sortedCPs) do
+				if item.num == targetNum then
+					foundIndex = index
+					break
+				end
+			end
+			
+			if foundIndex then
+				currentCPIndex = foundIndex
+				teleportToPart(sortedCPs[foundIndex].part)
+			end
+		end
+	end
+end)
+
+-- 2. Otomatik TP Aç/Kapa Toggle
+hub:AddToggle("Main", "Oto-TP Başlat", false, function(state)
+	isTeleporting = state
+	if isTeleporting then
+		task.spawn(startTeleportingLoop)
+	end
+end)
